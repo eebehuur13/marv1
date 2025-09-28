@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import app from '../api/src/worker';
+import app from '../src/worker';
 import { createTestEnv } from './helpers/mock-env';
 
-vi.mock('../api/src/lib/access', () => ({
+vi.mock('../src/lib/access', () => ({
   authenticateRequest: vi.fn(async () => ({
-    id: 'user-1',
+    id: 'user@example.com',
     email: 'user@example.com',
-    name: 'Test User',
+    displayName: 'Test User',
+    tenant: 'default',
   })),
 }));
 
@@ -24,31 +25,38 @@ describe('chat route', () => {
   it('returns structured answer with citations', async () => {
     const { env, db, vector, ctx } = createTestEnv();
 
+    const timestamp = new Date().toISOString();
     db.folders.set('public-root', {
       id: 'public-root',
+      tenant: 'default',
       name: 'Org Shared',
       visibility: 'public',
       owner_id: null,
-      created_at: new Date().toISOString(),
+      created_at: timestamp,
+      updated_at: timestamp,
     });
 
     db.files.set('file-1', {
       id: 'file-1',
+      tenant: 'default',
       folder_id: 'public-root',
-      owner_id: 'user-1',
+      owner_id: 'user@example.com',
       visibility: 'public',
       file_name: 'handbook.txt',
       r2_key: 'public/public-root/file-1-handbook.txt',
       size: 128,
       status: 'ready',
-      created_at: new Date().toISOString(),
+      mime_type: 'text/plain',
+      created_at: timestamp,
+      updated_at: timestamp,
+      deleted_at: null,
     });
 
     db.chunks.set('chunk-1', {
       id: 'chunk-1',
       file_id: 'file-1',
       folder_id: 'public-root',
-      owner_id: 'user-1',
+      owner_id: 'user@example.com',
       visibility: 'public',
       chunk_index: 0,
       start_line: 1,
@@ -113,7 +121,7 @@ describe('chat route', () => {
 
     const request = new Request('https://example.com/api/chat', {
       method: 'POST',
-      body: JSON.stringify({ question: '/lookup What does Marble do?' }),
+      body: JSON.stringify({ message: 'What does Marble do?', knowledgeMode: true }),
       headers: {
         'Content-Type': 'application/json',
         'cf-access-jwt-assertion': 'test-token',
@@ -168,7 +176,7 @@ describe('chat route', () => {
 
     const request = new Request('https://example.com/api/chat', {
       method: 'POST',
-      body: JSON.stringify({ question: 'Hello there!' }),
+      body: JSON.stringify({ message: 'Hello there!', knowledgeMode: false }),
       headers: {
         'Content-Type': 'application/json',
         'cf-access-jwt-assertion': 'test-token',

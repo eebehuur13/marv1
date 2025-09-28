@@ -1,12 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import app from '../api/src/worker';
+import app from '../src/worker';
 import { createTestEnv } from './helpers/mock-env';
 
-vi.mock('../api/src/lib/access', () => ({
+vi.mock('../src/lib/access', () => ({
   authenticateRequest: vi.fn(async () => ({
-    id: 'user-1',
+    id: 'user@example.com',
     email: 'user@example.com',
-    name: 'Test User',
+    displayName: 'Test User',
+    tenant: 'default',
   })),
 }));
 
@@ -24,27 +25,34 @@ describe('ingest route', () => {
   it('chunks text files and upserts embeddings', async () => {
     const { env, db, r2, vector, ctx } = createTestEnv();
 
+    const timestamp = new Date().toISOString();
     db.folders.set('private-root', {
       id: 'private-root',
+      tenant: 'default',
       name: 'My Space',
       visibility: 'private',
-      owner_id: 'user-1',
-      created_at: new Date().toISOString(),
+      owner_id: 'user@example.com',
+      created_at: timestamp,
+      updated_at: timestamp,
     });
 
     db.files.set('file-1', {
       id: 'file-1',
+      tenant: 'default',
       folder_id: 'private-root',
-      owner_id: 'user-1',
+      owner_id: 'user@example.com',
       visibility: 'private',
       file_name: 'notes.txt',
-      r2_key: 'users/user-1/private-root/file-1-notes.txt',
+      r2_key: 'users/user@example.com/private-root/file-1-notes.txt',
       size: 42,
+      mime_type: 'text/plain',
       status: 'uploading',
-      created_at: new Date().toISOString(),
+      created_at: timestamp,
+      updated_at: timestamp,
+      deleted_at: null,
     });
 
-    await r2.put('users/user-1/private-root/file-1-notes.txt', 'Line one\nLine two\nLine three');
+    await r2.put('users/user@example.com/private-root/file-1-notes.txt', 'Line one\nLine two\nLine three');
 
     global.fetch = vi.fn(async (input, init) => {
       if (typeof input === 'string' && input.endsWith('/embeddings')) {

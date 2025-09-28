@@ -1,23 +1,25 @@
 {
-  "name": "project-marble-api",
+  "name": "project-marble-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "test": "vitest"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "hono": "^4.9.9",
-    "zod": "^3.23.8"
+    "@tanstack/react-query": "^5.39.0",
+    "clsx": "^2.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.5.8",
-    "@cloudflare/workers-types": "^4.20240524.0",
-    "@types/node": "^20.12.7",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "sass": "^1.75.0",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.2",
-    "wrangler": "^3.53.1"
+    "vite": "^5.2.8"
   }
 }

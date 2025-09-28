@@ -1,10 +1,14 @@
+// @ts-nocheck
+import { Buffer } from 'node:buffer';
 import type { ExecutionContext, R2Bucket, VectorizeIndex } from '@cloudflare/workers-types';
-import type { MarbleBindings } from '../../api/src/types';
+import type { MarbleBindings } from '../../src/types';
 import { MockD1 } from './mock-db';
 
 type R2ObjectStub = {
   key: string;
   body: string;
+  httpMetadata?: { contentType?: string };
+  customMetadata?: Record<string, string>;
 };
 
 class MockR2 {
@@ -17,11 +21,28 @@ class MockR2 {
     }
     return {
       text: async () => object.body,
+      body: object.body,
+      httpMetadata: object.httpMetadata ?? { contentType: 'text/plain' },
+      customMetadata: object.customMetadata ?? {},
     };
   }
 
-  async put(key: string, body: string) {
-    this.objects.set(key, { key, body });
+  async put(key: string, body: string | ReadableStream, options?: { httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string> }) {
+    if (body instanceof ReadableStream) {
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const decoder = new TextDecoder();
+      const text = decoder.decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+      this.objects.set(key, { key, body: text, httpMetadata: options?.httpMetadata, customMetadata: options?.customMetadata });
+    } else {
+      this.objects.set(key, { key, body, httpMetadata: options?.httpMetadata, customMetadata: options?.customMetadata });
+    }
   }
 
   async delete(key: string) {
