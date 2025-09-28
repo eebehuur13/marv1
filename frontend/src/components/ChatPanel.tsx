@@ -1,93 +1,64 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { sendChat, type ChatResponse } from '../lib/api';
 
 interface ChatMessage {
   id: string;
-  question: string;
+  prompt: string;
   answer: string;
-  status: 'loading' | 'streaming' | 'ready' | 'error';
+  knowledgeMode: boolean;
+  status: 'pending' | 'ready' | 'error';
   citations: ChatResponse['citations'];
   sources: ChatResponse['sources'];
   error?: string;
 }
 
-function createStreamingSteps(text: string): string[] {
-  if (!text.length) {
-    return [''];
-  }
-  const tokens = text.split(/(\s+)/);
-  const steps: string[] = [];
-  let buffer = '';
-  tokens.forEach((token) => {
-    buffer += token;
-    steps.push(buffer);
-  });
-  return steps;
-}
+const KNOWLEDGE_STORAGE_KEY = 'marble-knowledge-mode';
 
 export function ChatPanel() {
-  const [question, setQuestion] = useState('');
+  const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<string | null>(null);
-  const timeoutsRef = useRef<number[]>([]);
+  const [knowledgeMode, setKnowledgeMode] = useState(false);
 
   useEffect(() => {
-    return () => {
-      timeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
-      timeoutsRef.current = [];
-    };
+    const saved = localStorage.getItem(KNOWLEDGE_STORAGE_KEY);
+    if (saved === 'true') setKnowledgeMode(true);
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem(KNOWLEDGE_STORAGE_KEY, knowledgeMode ? 'true' : 'false');
+  }, [knowledgeMode]);
+
   const mutation = useMutation({
-    mutationFn: async ({ question, messageId }: { question: string; messageId: string }) => {
-      const response = await sendChat(question);
-      return { response, messageId };
+    mutationFn: async ({ id, question, knowledge }: { id: string; question: string; knowledge: boolean }) => {
+      const response = await sendChat(question, knowledge);
+      return { id, response };
     },
-    onSuccess: ({ response, messageId }) => {
-      const steps = createStreamingSteps(response.answer);
+    onSuccess: ({ id, response }) => {
       setMessages((prev) =>
         prev.map((message) =>
-          message.id === messageId
+          message.id === id
             ? {
                 ...message,
-                status: steps.length > 1 ? 'streaming' : 'ready',
-                answer: steps.length ? steps[0] : '',
+                answer: response.answer,
                 citations: response.citations,
                 sources: response.sources,
+                status: 'ready',
               }
             : message,
         ),
       );
-
-      steps.slice(1).forEach((text, index) => {
-        const timeout = window.setTimeout(() => {
-          setMessages((prev) =>
-            prev.map((message) =>
-              message.id === messageId
-                ? {
-                    ...message,
-                    status: index === steps.length - 2 ? 'ready' : 'streaming',
-                    answer: text,
-                  }
-                : message,
-            ),
-          );
-        }, 30 * (index + 1));
-        timeoutsRef.current.push(timeout);
-      });
-
       setStatus(null);
     },
     onError: (error: unknown, variables) => {
       const message = error instanceof Error ? error.message : 'Chat failed';
       setMessages((prev) =>
         prev.map((entry) =>
-          entry.id === variables.messageId
+          entry.id === variables.id
             ? {
                 ...entry,
                 status: 'error',
-                answer: '',
                 error: message,
               }
             : entry,
@@ -99,85 +70,112 @@ export function ChatPanel() {
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!question.trim()) {
-      return;
-    }
-    const messageId = crypto.randomUUID();
-    const text = question.trim();
-    setQuestion('');
+    if (!prompt.trim()) return;
+    const id = crypto.randomUUID();
+    const question = prompt.trim();
+    setPrompt('');
     setStatus('Thinking…');
     setMessages((prev) => [
       ...prev,
       {
-        id: messageId,
-        question: text,
+        id,
+        prompt: question,
         answer: '',
-        status: 'loading',
+        knowledgeMode,
+        status: 'pending',
         citations: [],
         sources: [],
       },
     ]);
-    mutation.mutate({ question: text, messageId });
+    mutation.mutate({ id, question, knowledge: knowledgeMode });
   };
 
   return (
-    <section className="panel chat-panel">
+    <section className="panel chat-panel prime">
       <header className="panel-header">
-        <h2>Marble Chat</h2>
-        {status && <span className="status">{status}</span>}
+        <div>
+          <h2>Conversational Search</h2>
+          <p className="muted">Chat naturally and blend in workspace knowledge when you need it.</p>
+        </div>
+        <div className="chat-controls">
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={knowledgeMode}
+              onChange={(event) => setKnowledgeMode(event.target.checked)}
+            />
+            <span>Knowledge Mode</span>
+          </label>
+          <small>{knowledgeMode ? 'Referencing org and private folders.' : 'Staying model-only.'}</small>
+        </div>
       </header>
+
+      {status && <div className="banner info">{status}</div>}
+
       <div className={`messages ${hasMessages ? '' : 'empty'}`}>
         {hasMessages ? (
           messages.map((message) => (
             <article key={message.id} className={`message ${message.status}`}>
-              <h3>Q: {message.question}</h3>
-              {message.status === 'error' ? (
-                <p className="error">{message.error}</p>
-              ) : (
-                <p>{message.answer}</p>
-              )}
-              {message.citations.length > 0 && (
-                <ul className="citations">
-                  {message.citations.map((citation, index) => (
-                    <li key={`${message.id}-${index}`}>
-                      [{index + 1}] {citation.folder} / {citation.file} : lines {citation.lines[0]}–
-                      {citation.lines[1]}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {message.sources.length > 0 && (
-                <details>
-                  <summary>Sources</summary>
-                  <ul className="sources">
-                    {message.sources.map((source) => (
-                      <li key={source.chunkId}>
-                        <strong>
-                          {source.folderName} / {source.fileName} : lines {source.startLine}–{source.endLine}
-                        </strong>
-                        <pre>{source.content}</pre>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
+              <div className="message__prompt">
+                <span className="message__avatar user">You</span>
+                <div>
+                  <p className="message__prompt-text">{message.prompt}</p>
+                </div>
+              </div>
+              <div className="message__response">
+                <span className="message__avatar assistant">Marv</span>
+                <div className="message__body">
+                  {message.knowledgeMode && <span className="badge info message__badge">Knowledge Mode</span>}
+                  {message.status === 'error' ? (
+                    <p className="error-text">{message.error}</p>
+                  ) : (
+                    <p>{message.answer || 'Generating…'}</p>
+                  )}
+                  {message.citations.length > 0 && (
+                    <ul className="citations">
+                      {message.citations.map((citation, index) => (
+                        <li key={`${message.id}-${index}`}>
+                          <strong>#{index + 1}</strong> {citation.folder} / {citation.file} · lines {citation.lines[0]}–
+                          {citation.lines[1]}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {message.sources.length > 0 && (
+                    <details className="sources-disclosure">
+                      <summary>Supporting Chunks</summary>
+                      <ul className="sources">
+                        {message.sources.map((source) => (
+                          <li key={source.chunkId}>
+                            <strong>
+                              {source.folderName} / {source.fileName} · lines {source.startLine}–{source.endLine}
+                            </strong>
+                            <pre>{source.content}</pre>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              </div>
             </article>
           ))
         ) : (
-          <p className="placeholder">Ask something about your Marble documents to get started.</p>
+          <p className="placeholder">Flip on knowledge mode to reference uploads, or chat freely without it.</p>
         )}
       </div>
+
       <form className="chat-input" onSubmit={handleSubmit}>
         <input
           type="text"
-          placeholder="Ask Marble about your files…"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
+          placeholder="Ask something…"
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
           disabled={mutation.isPending}
         />
-        <button type="submit" disabled={mutation.isPending}>
+        <button type="submit" disabled={mutation.isPending || !prompt.trim()}>
           Send
         </button>
       </form>
