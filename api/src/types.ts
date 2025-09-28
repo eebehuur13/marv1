@@ -12,8 +12,9 @@ export interface MarbleBindings {
   VECTOR_TOP_K?: string;
   CHUNK_SIZE?: string;
   CHUNK_OVERLAP?: string;
-  CF_ACCESS_AUD: string;
-  CF_ACCESS_TEAM_DOMAIN: string;
+  CF_ACCESS_AUD?: string;
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  SKIP_ACCESS_CHECK?: string;
 }
 
 export interface MarbleContext {
@@ -24,7 +25,10 @@ export interface MarbleContext {
 export interface AuthenticatedUser {
   id: string;
   email: string;
-  name?: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  tenant: string;
+  authMethod: 'access' | 'dev';
 }
 
 export interface FolderRecord {

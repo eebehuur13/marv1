@@ -87,6 +87,9 @@ async function importKey(jwk: AccessJwk): Promise<CryptoKey> {
 
 async function getSigningKey(env: MarbleBindings, kid: string): Promise<CryptoKey> {
   const domain = env.CF_ACCESS_TEAM_DOMAIN;
+  if (!domain) {
+    throw new HTTPException(401, { message: 'Access team domain not configured' });
+  }
   const now = Date.now();
   const cached = jwkCache.get(domain);
   if (cached && now - cached.fetchedAt < 10 * 60 * 1000) {
@@ -133,16 +136,29 @@ function ensureAudience(payload: Record<string, unknown>, aud: string) {
   throw new HTTPException(401, { message: 'Access token audience mismatch' });
 }
 
-function toAuthenticatedUser(payload: Record<string, unknown>): AuthenticatedUser {
+function toAuthenticatedUser(payload: Record<string, unknown>, env: MarbleBindings): AuthenticatedUser {
   const id = typeof payload.sub === 'string' ? payload.sub : undefined;
   const email = typeof payload.email === 'string' ? payload.email : undefined;
-  const name = typeof payload.name === 'string' ? payload.name : undefined;
+  const name = typeof payload.name === 'string' ? payload.name : null;
+  const picture = typeof payload.picture === 'string' ? payload.picture : null;
 
   if (!id || !email) {
     throw new HTTPException(401, { message: 'Access token missing user claims' });
   }
 
-  return { id, email, name };
+  const tenantClaim = typeof payload.tenant === 'string' ? payload.tenant : null;
+  const tenantFromEmail = email.includes('@') ? email.split('@')[1] : 'default';
+  const tenantFromEnv = env.CF_ACCESS_TEAM_DOMAIN ?? null;
+  const tenant = tenantClaim ?? tenantFromEnv ?? tenantFromEmail ?? 'default';
+
+  return {
+    id,
+    email,
+    displayName: name,
+    avatarUrl: picture,
+    tenant,
+    authMethod: 'access',
+  };
 }
 
 /**
@@ -164,7 +180,10 @@ export async function authenticateRequest(request: Request, env: MarbleBindings)
     return {
       id: 'dev-user',
       email: 'dev@local',
-      name: 'Dev User',
+      displayName: 'Dev User',
+      avatarUrl: null,
+      tenant: 'dev',
+      authMethod: 'dev',
     };
   }
 
@@ -175,6 +194,9 @@ export async function authenticateRequest(request: Request, env: MarbleBindings)
   }
 
   const { payload, signature, signingInput, kid } = parseJwt(token);
+  if (!env.CF_ACCESS_AUD) {
+    throw new HTTPException(401, { message: 'Access audience not configured' });
+  }
   ensureAudience(payload, env.CF_ACCESS_AUD);
 
   const key = await getSigningKey(env, kid);
@@ -183,5 +205,5 @@ export async function authenticateRequest(request: Request, env: MarbleBindings)
     throw new HTTPException(401, { message: 'Invalid Access token signature' });
   }
 
-  return toAuthenticatedUser(payload);
+  return toAuthenticatedUser(payload, env);
 }

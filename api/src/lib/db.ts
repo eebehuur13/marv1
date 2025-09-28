@@ -10,13 +10,16 @@ import type {
 
 export async function ensureUser(env: MarbleBindings, user: AuthenticatedUser): Promise<void> {
   await env.MARBLE_DB.prepare(
-    `INSERT INTO users (id, email, name)
-     VALUES (?1, ?2, ?3)
+    `INSERT INTO users (id, email, display_name, avatar_url, tenant, last_seen)
+     VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP)
      ON CONFLICT(id) DO UPDATE SET
        email = excluded.email,
-       name = excluded.name`,
+       display_name = excluded.display_name,
+       avatar_url = excluded.avatar_url,
+       tenant = excluded.tenant,
+       last_seen = CURRENT_TIMESTAMP`,
   )
-    .bind(user.id, user.email, user.name ?? null)
+    .bind(user.id, user.email, user.displayName, user.avatarUrl, user.tenant)
     .run();
 }
 

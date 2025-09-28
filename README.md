@@ -57,7 +57,7 @@ npm install
    cd frontend
    npm run dev
    ```
-3. Visit `http://localhost:5173`. If `VITE_API_BASE` is not set, Vite proxies `/api/*` to `http://127.0.0.1:8787`. To point at a deployed Worker instead, create `frontend/.env.local` with `VITE_API_BASE=https://<your-worker-host>`.
+3. Visit `http://localhost:5173`. The SPA now prompts for a name + email the first time you sign in locally; this creates a per-browser identity that the Worker uses to keep data separated. You can sign out from the avatar menu to switch identities. If `VITE_API_BASE` is not set, Vite proxies `/api/*` to `http://127.0.0.1:8787`. To point at a deployed Worker instead, create `frontend/.env.local` with `VITE_API_BASE=https://<your-worker-host>`.
 
 ## Database migrations & seeds
 ```bash
@@ -107,6 +107,7 @@ tests/           Vitest suites with mocked Cloudflare/OpenAI services
 - Chunk ranges are inclusive; if you modify chunk size or overlap keep the overlap ≥200 characters (update this README if you change the invariant).
 - The Worker defaults `ALLOWED_ORIGIN` to `http://localhost:5173`; override via secret if your frontend runs elsewhere.
 - Keep `wrangler.toml` and automation scripts in sync when you swap OpenAI models or embedding dimensions to avoid Vectorize errors.
+- When automating local requests without Cloudflare Access, include an `x-marble-dev-user` header whose value is a base64-encoded JSON object (`{"id":"uuid","email":"you@example.com","displayName":"You"}`) so each agent stays sandboxed to its own workspace.
 
 ## Troubleshooting
 - **OpenAI errors:** confirm `OPENAI_API_KEY` is present and the models referenced in `wrangler.toml` exist for your account.

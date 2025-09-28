@@ -1,5 +1,7 @@
 // frontend/src/lib/api.ts
 
+import { getIdentityHeader, getIdentityHeaderName } from './auth';
+
 // --- Types ---
 export interface SessionResponse {
   user: {
@@ -7,8 +9,11 @@ export interface SessionResponse {
     email: string;
     displayName: string | null;
     avatarUrl: string | null;
+    tenant: string;
+    authMethod: 'access' | 'dev';
   };
   tenant: string;
+  mode: 'access' | 'dev';
 }
 
 export type Visibility = 'public' | 'private';
@@ -67,13 +72,41 @@ export interface ChatResponse {
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 export const API_BASE = BASE;
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+function attachIdentity(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers ?? undefined);
+  const identity = getIdentityHeader();
+  if (identity) {
+    headers.set(getIdentityHeaderName(), identity);
+  }
+  return { ...init, headers };
+}
+
 // --- Fetch helper ---
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${BASE}${path}`;
-  const response = await fetch(url, init);
+  const response = await fetch(url, attachIdentity(init));
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed with ${response.status}`);
+    let message = text || `Request failed with ${response.status}`;
+    try {
+      const parsed = JSON.parse(text) as { error?: string };
+      if (parsed && typeof parsed.error === 'string' && parsed.error.trim().length > 0) {
+        message = parsed.error;
+      }
+    } catch {
+      // ignore parse errors; fall back to raw text
+    }
+    throw new ApiError(response.status, message);
   }
   return response.json() as Promise<T>;
 }
@@ -120,13 +153,13 @@ export function fetchFiles(params: { visibility?: 'public' | 'private' | 'all'; 
 }
 
 export async function uploadFile(formData: FormData): Promise<{ file: FileSummary }> {
-  const response = await fetch(`${BASE}/api/files`, {
+  const response = await fetch(`${BASE}/api/files`, attachIdentity({
     method: 'POST',
     body: formData,
-  });
+  }));
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Upload failed with ${response.status}`);
+    throw new ApiError(response.status, text || `Upload failed with ${response.status}`);
   }
   return response.json();
 }

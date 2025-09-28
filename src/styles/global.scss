@@ -871,6 +871,24 @@ button.danger,
   color: var(--color-text-default);
 }
 
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 1.5rem;
+  width: min(90vw, 360px);
+  padding: 1.5rem;
+  border-radius: var(--radius-panel);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-border-glass);
+  box-shadow: var(--shadow-ambient);
+}
+
+.auth-form .button {
+  align-self: stretch;
+  margin-top: 0.5rem;
+}
+
 .page-state.error {
   color: #b91c1c;
 }
